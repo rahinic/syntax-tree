@@ -28,30 +28,42 @@ def add_missing_tokens(parse_dict: Dict) -> Dict:
         missing_in_previous_chunk = False
         first_token = True
         current_token, current_pos_tag = prev_level_tokens_w_tags.pop()
+        
+        
         while prev_level_tokens_w_tags:
             if len(prev_level_tokens_w_tags) == 1 and missing_in_previous_chunk:
                 logging.debug(f"inserting {current_token} in chunk: {chunk_index}")
                 values["tokens"].insert(chunk_index, current_token)
                 values["tags"].insert(chunk_index, "O")
             logging.debug(f"searching chunk: {chunk_index} for {current_token}")
-            if all(t in values["tokens"][chunk_index] for t in current_token):
-                missing_in_previous_chunk = False
-                first_token = False
-                current_token, current_pos_tag = prev_level_tokens_w_tags.pop()
-                continue
-            else:
-                logging.debug(f"missing: {current_token}")
-                if missing_in_previous_chunk or first_token:
-                    logging.debug(f"inserting {current_token} in chunk: {chunk_index}")
-                    values["tokens"].insert(chunk_index, current_token)
-                    values["tags"].insert(chunk_index, "O")
+            
+            try:
+                if all(t in values["tokens"][chunk_index] for t in current_token):
                     missing_in_previous_chunk = False
+                    first_token = False
                     current_token, current_pos_tag = prev_level_tokens_w_tags.pop()
-                    if first_token:
-                        chunk_index += 1
                     continue
-                missing_in_previous_chunk = True
-                chunk_index += 1
+                else:
+                    logging.debug(f"missing: {current_token}")
+                    if missing_in_previous_chunk or first_token:
+                        logging.debug(f"inserting {current_token} in chunk: {chunk_index}")
+                        values["tokens"].insert(chunk_index, current_token)
+                        values["tags"].insert(chunk_index, "O")
+                        missing_in_previous_chunk = False
+                        current_token, current_pos_tag = prev_level_tokens_w_tags.pop()
+                        if first_token:
+                            chunk_index += 1
+                        continue
+                    missing_in_previous_chunk = True
+                    chunk_index += 1
+
+            except IndexError:
+                None
+                break
+                # print(current_token)
+                # print(values["tokens"][0])
+                # print(values["tokens"])
+                
 
     return parse_dict
 
@@ -102,7 +114,10 @@ def fill_targets(parse_dict: Dict, max_level: int) -> Dict:
         for chunk in values["tokens"]:
             # pop len(chunk) labels from current_targets
             # de-duplicate them and then add to values["targets"]
-            targets = [current_targets.pop() for _ in range(len(chunk))]
+            try:
+                targets = [current_targets.pop() for _ in range(len(chunk))]
+            except IndexError:
+                None
             values["targets"].append(_get_unique_target(targets))
 
     return parse_dict
@@ -136,10 +151,14 @@ def build_parse_dict(src_tree: Tree) -> Dict:
 def main(treebank_file, output_file):
     with open(treebank_file, encoding="utf-8") as infile, \
         open(output_file, "w", encoding="utf-8") as outfile:
-        for line in tqdm(infile.readlines()):
+        for idx,line in enumerate(tqdm(infile.readlines())):
+            
             parse_tree = Tree.fromstring(line)
+            # print(parse_tree)
+        
             parsed_dict = build_parse_dict(parse_tree)
             outfile.write(f"{json.dumps(parsed_dict)}\n")
+            
 
 
 if __name__ == "__main__":
